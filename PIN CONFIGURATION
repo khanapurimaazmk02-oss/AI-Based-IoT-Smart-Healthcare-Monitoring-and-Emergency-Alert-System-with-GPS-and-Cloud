@@ -1,0 +1,66 @@
+This is for ESP32 Dev Module with:
+
+MAX30102
+
+DS18B20
+
+NEO-6M GPS
+
+SIM800L GSM
+
+LED
+
+Buzzer
+
+✅ 1️⃣ MAX30102 Connection (I2C)
+MAX30102 Pin	Connect To ESP32
+VIN	3.3V
+GND	GND
+SDA	GPIO 21
+SCL	GPIO 22
+
+⚠️ Use 3.3V (NOT 5V)
+
+✅ 2️⃣ DS18B20 Connection
+DS18B20 Pin	Connect To ESP32
+VCC	3.3V
+GND	GND
+DATA	GPIO 4
+
+⚠️ Add 4.7kΩ resistor between DATA and 3.3V
+
+✅ 3️⃣ GPS Module (NEO-6M)
+GPS Pin	Connect To ESP32
+VCC	5V (VIN)
+GND	GND
+TX	GPIO 16
+RX	GPIO 17
+
+⚠️ TX of GPS → RX of ESP32
+⚠️ RX of GPS → TX of ESP32
+
+✅ 4️⃣ GSM Module (SIM800L)
+GSM Pin	Connect To ESP32
+VCC	External 4V–5V Supply ⚠️
+GND	GND (Common Ground)
+TX	GPIO 26
+RX	GPIO 27
+
+🚨 VERY IMPORTANT:
+
+Do NOT power SIM800L from ESP32 3.3V
+
+Use separate 4V supply (minimum 2A current)
+
+Connect GSM GND to ESP32 GND
+
+✅ 5️⃣ LED
+LED Pin	Connect To ESP32
+Anode (+)	GPIO 2
+Cathode (-)	GND (through 220Ω resistor)
+
+
+✅ 6️⃣ Buzzer
+Buzzer Pin	Connect To ESP32
+Positive (+)	GPIO 15
+Negative (-)	GND
