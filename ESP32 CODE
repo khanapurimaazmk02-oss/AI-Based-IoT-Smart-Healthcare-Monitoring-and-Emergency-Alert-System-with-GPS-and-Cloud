@@ -1,35 +1,42 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 #include <Wire.h>
 #include "MAX30105.h"
-#include "heartRate.h"
+#include "spo2_algorithm.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
-#include "spo2_algorithm.h"
 
-// ---------------- WIFI ----------------
-const char* ssid = "Galaxy 5G Ali";
-const char* password = "1234567890";
+// ---------------- I2C ----------------
+#define SDA_PIN 21
+#define SCL_PIN 22
+
+// ---------------- DS18B20 ----------------
+#define ONE_WIRE_BUS 4
+
+// ---------------- GPS ----------------
+#define GPS_RX 16
+#define GPS_TX 17
+
+// ---------------- ALERT ----------------
+#define LED 27
+#define BUZZER 26
+
+// ---------------- WiFi ----------------
+const char* ssid = "ONE PLUS MAAZ";
+const char* password = "maazmk02";
 
 String firebaseURL = "https://iot-patient-health-monit-c67f6-default-rtdb.asia-southeast1.firebasedatabase.app/healthData.json";
 
-// SENSORS pin configuration 
-#define ONE_WIRE_BUS 4
-#define LED_PIN 2  //LED
-#define BUZZER_PIN 15//buzzer
-
+// Objects
 MAX30105 particleSensor;
-TinyGPSPlus gps;
-
-HardwareSerial SerialAT(1);     // GSM
-HardwareSerial gpsSerial(2);    // GPS
-
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
+TinyGPSPlus gps;
+HardwareSerial gpsSerial(1);
 
-//  VARIABLES of MAX30102
+// Buffers
 uint32_t irBuffer[100];
 uint32_t redBuffer[100];
 
@@ -38,47 +45,69 @@ int8_t validSPO2;
 int32_t heartRate;
 int8_t validHeartRate;
 
-float temp = 0.0;
-float latitude = 0.0;
-float longitude = 0.0;
+bool buzzerTriggered = false;
 
-bool smsSent = false;
-
-
-void setup() {
-
+void setup()
+{
   Serial.begin(115200);
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-  }
-  Serial.println("WiFi Connected");
-
-  Wire.begin(21, 22);
-
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-
-  gpsSerial.begin(9600, SERIAL_8N1, 16, 17);   // GPS RX=16 and TX=17
-  SerialAT.begin(9600, SERIAL_8N1, 26, 27);    // GSM RX=26 and TX=27
-
+  Wire.begin(SDA_PIN, SCL_PIN);
   sensors.begin();
+  gpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
 
-  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
+  pinMode(LED, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+
+  digitalWrite(LED, LOW);
+  digitalWrite(BUZZER, LOW);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected");
+
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST))
+  {
     Serial.println("MAX30102 not found");
     while (1);
   }
 
-  particleSensor.setPulseAmplitudeRed(0x0A);
-  particleSensor.setPulseAmplitudeIR(0x0A);
+  particleSensor.setup();
+  particleSensor.setPulseAmplitudeRed(0x3F);  // Increased for better signal
+  particleSensor.setPulseAmplitudeGreen(0);
+
+  Serial.println("System Ready");
 }
 
+void loop()
+{
+  // -------- TEMPERATURE --------
+  sensors.requestTemperatures();
+  float temperature = sensors.getTempCByIndex(0);
 
-void loop() {
+  if (temperature == DEVICE_DISCONNECTED_C)
+    temperature = 0;
 
-  //code for pulse and spo2
-  for (byte i = 0; i < 100; i++) {
+  // -------- GPS --------
+  while (gpsSerial.available() > 0)
+    gps.encode(gpsSerial.read());
+
+  double latitude = 0;
+  double longitude = 0;
+
+  if (gps.location.isValid())
+  {
+    latitude = gps.location.lat();
+    longitude = gps.location.lng();
+  }
+
+  // -------- MAX30102 --------
+  for (byte i = 0; i < 100; i++)
+  {
     while (!particleSensor.available())
       particleSensor.check();
 
@@ -89,107 +118,57 @@ void loop() {
 
   maxim_heart_rate_and_oxygen_saturation(
     irBuffer, 100, redBuffer,
-    &spo2, &validSPO2,
-    &heartRate, &validHeartRate);
+    &spo2, &validSPO2, &heartRate, &validHeartRate
+  );
 
-  if (validHeartRate && validSPO2) {
-    Serial.println("Heart Rate = " + String(heartRate) + " BPM");
-    Serial.println("SpO2 = " + String(spo2) + " %");
-  }
+  Serial.println("Heart Rate = " + String(heartRate));
+  Serial.println("SpO2 = " + String(spo2));
+  Serial.println("Temperature = " + String(temperature));
+  Serial.println("Latitude = " + String(latitude, 6));
+  Serial.println("Longitude = " + String(longitude, 6));
 
-  // code for body temprature
-  sensors.requestTemperatures();
-  temp = sensors.getTempCByIndex(0);
 
-  Serial.println("Temperature = " + String(temp) + " °C");
-
-  // code for gps
-  while (gpsSerial.available()) {
-    gps.encode(gpsSerial.read());
-  }
-
-  if (gps.location.isUpdated()) {
-    latitude = gps.location.lat();
-    longitude = gps.location.lng();
-
-    Serial.println("Latitude = " + String(latitude, 6));
-    Serial.println("Longitude = " + String(longitude, 6));
-  }
-
-  // code for sending data to fierbase
-  if (WiFi.status() == WL_CONNECTED) {
+  // -------- FIREBASE --------
+  if (validHeartRate && validSPO2)
+  {
+    String jsonData = "{";
+    jsonData += "\"heartRate\":" + String(heartRate) + ",";
+    jsonData += "\"spo2\":" + String(spo2) + ",";
+    jsonData += "\"temperature\":" + String(temperature) + ",";
+    jsonData += "\"latitude\":" + String(latitude, 6) + ",";
+    jsonData += "\"longitude\":" + String(longitude, 6);
+    jsonData += "}";
 
     HTTPClient http;
     http.begin(firebaseURL);
     http.addHeader("Content-Type", "application/json");
+    int response = http.PUT(jsonData);
 
-    String json = "{";
-    json += "\"heartRate\":" + String(heartRate) + ",";
-    json += "\"spo2\":" + String(spo2) + ",";
-    json += "\"temperature\":" + String(temp) + ",";
-    json += "\"latitude\":" + String(latitude, 6) + ",";
-    json += "\"longitude\":" + String(longitude, 6);
-    json += "}";
-
-    int response = http.PUT(json);
-    Serial.println("Firebase Response: " + String(response));
+    Serial.print("Firebase Response: ");
+    Serial.println(response);
 
     http.end();
   }
+  if (heartRate >= 120 && !buzzerTriggered)
+  {
+    Serial.println("⚠ BPM HIGH - BUZZER ON FOR 5 SECONDS");
 
-  checkEmergency();
+    digitalWrite(LED, HIGH);
+    digitalWrite(BUZZER, HIGH);
 
-  delay(5000);
-}
+    delay(5000);   // 5 seconds ON
 
-// code emergency conditions
-void checkEmergency() {
+    digitalWrite(LED, LOW);
+    digitalWrite(BUZZER, LOW);
 
-  if ((temp > 38.5 || temp < 35 ||
-       heartRate > 120 || heartRate < 50 ||
-       spo2 < 95) && !smsSent) {
-
-    digitalWrite(LED_PIN, HIGH);
-    digitalWrite(BUZZER_PIN, HIGH);
-
-    Serial.println("EMERGENCY DETECTED");
-
-    String locationLink = "https://www.google.com/maps?q=" +
-                          String(latitude, 6) + "," +
-                          String(longitude, 6);
-
-    sendSMS(locationLink);
-    smsSent = true;
+    buzzerTriggered = true;
   }
 
-  if (temp <= 38.5 && temp >= 35 &&
-      heartRate <= 120 && heartRate >= 50 &&
-      spo2 >= 95) {
-
-    digitalWrite(LED_PIN, LOW);
-    digitalWrite(BUZZER_PIN, LOW);
-    smsSent = false;
+  if (heartRate < 120)
+  {
+    buzzerTriggered = false;
   }
-}
 
-// code for sending sms
-void sendSMS(String locationLink) {
-
-  SerialAT.println("AT+CMGF=1");
-  delay(1000);
-
-  SerialAT.println("AT+CMGS=\"+91XXXXXXXXXX\"");   // we have change the number 
-  delay(1000);
-
-  SerialAT.println("EMERGENCY! Patient Alert");
-  SerialAT.println("Temperature: " + String(temp));
-  SerialAT.println("Heart Rate: " + String(heartRate));
-  SerialAT.println("SpO2: " + String(spo2));
-  SerialAT.println("Location:");
-  SerialAT.println(locationLink);
-
-  SerialAT.write(26);
+  Serial.println("----------------------------");
   delay(5000);
-
-  Serial.println("Emergency SMS Sent");
 }
