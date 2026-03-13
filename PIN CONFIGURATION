@@ -46,13 +46,7 @@ GND	GND (Common Ground)
 TX	GPIO 26
 RX	GPIO 27
 
-🚨 VERY IMPORTANT:
 
-Do NOT power SIM800L from ESP32 3.3V
-
-Use separate 4V supply (minimum 2A current)
-
-Connect GSM GND to ESP32 GND
 
 ✅ 5️⃣ LED
 LED Pin	Connect To ESP32
