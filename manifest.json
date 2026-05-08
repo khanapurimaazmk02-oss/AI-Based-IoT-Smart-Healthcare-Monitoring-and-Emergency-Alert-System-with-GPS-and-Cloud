@@ -1,0 +1,23 @@
+{
+  "name": "Medimonitor ICU",
+  "short_name": "Medimonitor",
+  "description": "Real-time ICU bedside monitor for patient vitals via ESP32",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#02191c",
+  "theme_color": "#02191c",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
